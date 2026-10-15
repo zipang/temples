@@ -39,8 +39,8 @@
 		"build": "bun build src/ssr.ts --outdir dist --format esm --target browser --packages external --tsconfig-override tsconfig.build.json --external @temples/engine --external @temples/components --entry-naming \"[name].[ext]\" && bun build src/ssr.ts --outdir dist --format esm --target browser --packages external --tsconfig-override tsconfig.build.json --external @temples/engine --external @temples/components --minify --entry-naming \"[name].min.[ext]\" && bun build src/ssr.ts --outdir dist --format esm --target node --packages external --tsconfig-override tsconfig.build.json --external @temples/engine --external @temples/components --entry-naming \"[name].[ext]\" && bun build src/ssr.ts --outdir dist --format esm --target node --packages external --tsconfig-override tsconfig.build.json --external @temples/engine --external @temples/components --minify --entry-naming \"[name].min.[ext]\" && tsc -p tsconfig.build.json"
 	},
 	"dependencies": {
-		"@temples/components": "workspace:*",
-		"@temples/engine": "workspace:*",
+		"@temples/components": "workspace:^",
+		"@temples/engine": "workspace:^",
 		"linkedom": "^0.18.13"
 	}
 }

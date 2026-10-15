@@ -38,7 +38,7 @@
 		"build": "bun build src/jquery.ts --outdir dist --format esm --target browser --packages external --tsconfig-override tsconfig.build.json --external @temples/engine --entry-naming \"[name].[ext]\" && bun build src/jquery.ts --outdir dist --format esm --target browser --packages external --tsconfig-override tsconfig.build.json --external @temples/engine --minify --entry-naming \"[name].min.[ext]\" && tsc -p tsconfig.build.json"
 	},
 	"dependencies": {
-		"@temples/engine": "workspace:*"
+		"@temples/engine": "workspace:^"
 	},
 	"peerDependencies": {
 		"jquery": ">=3.0.0"

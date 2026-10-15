@@ -17,7 +17,7 @@
       "name": "@temples/components",
       "version": "1.0.0",
       "dependencies": {
-        "@temples/engine": "workspace:*",
+        "@temples/engine": "workspace:^",
       },
     },
     "packages/docs": {
@@ -36,7 +36,7 @@
       "name": "@temples/jquery",
       "version": "1.0.0",
       "dependencies": {
-        "@temples/engine": "workspace:*",
+        "@temples/engine": "workspace:^",
       },
       "peerDependencies": {
         "jquery": ">=3.0.0",
@@ -46,8 +46,8 @@
       "name": "@temples/ssr",
       "version": "1.0.0",
       "dependencies": {
-        "@temples/components": "workspace:*",
-        "@temples/engine": "workspace:*",
+        "@temples/components": "workspace:^",
+        "@temples/engine": "workspace:^",
         "linkedom": "^0.18.13",
       },
     },

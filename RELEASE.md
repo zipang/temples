@@ -5,8 +5,12 @@ when 2FA is enabled). Everything before that is automated and verified.
 
 ## Prerequisites (one-time)
 
-1. Create the `temples` organization on <https://www.npmjs.com/org/settings/create>.
+1. Create the **`temples` organization** on <https://www.npmjs.com/org/create> (profile picture →
+   Add an Organization, then the free "Unlimited public packages" plan). One organization carries the
+   `@temples` scope for all four packages. There is no namespace per package.
 2. Log in locally: `bunx npm login` (Bun reads the credentials from `.npmrc` / bunfig.toml).
+
+A direct publish requires 2FA on the account. `bun publish` asks for the one-time password.
 
 ## Pre-publish gate
 
@@ -29,13 +33,20 @@ cd packages/ssr         && bun publish --dry-run && cd ../..
 cd packages/jquery      && bun publish --dry-run && cd ../..
 ```
 
-Check the file list: `package.json`, `README.md`, and the `dist/` outputs only. No sources, no
-tests.
+Check the file list: `package.json`, `README.md`, `LICENSE`, and the `dist/` outputs only. No
+sources, no tests.
+
+### License file
+
+The root `LICENSE` is the canonical MIT license. npm and Bun pack only a license file that sits
+inside the package directory, so each package holds an identical copy of it. When the root
+`LICENSE` changes, update the four copies in the same change.
 
 ## Publish
 
-Packages publish in dependency order (each `bun publish` resolves the `workspace:*` versions of
-the packages already published):
+Packages publish in dependency order. `bun publish` replaces the `workspace:^` specifier with the
+caret range of the version already published (`"workspace:^"` → `"^1.0.0"`), so `engine` must be
+published first:
 
 ```sh
 bun run publish:all
