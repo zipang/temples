@@ -304,3 +304,32 @@ describe("prepare a full page with components and the full binding range", () =>
 		expect(html).toContain("<h4>Store Title</h4>");
 	});
 });
+
+describe("prepare slot support", () => {
+	test("a slot receives the children authored on the tag", async () => {
+		class DocsHeader extends TemplesComponent {
+			static override tag = "docs-header";
+			static override template = '<header class="docs-header"><slot></slot></header>';
+			static override observedAttributes: string[] = [];
+			static override css = ".docs-header { position: sticky; }";
+		}
+
+		TemplesComponent.define("docs-header", DocsHeader, {
+			template: DocsHeader.template,
+			css: DocsHeader.css
+		});
+
+		const render = prepare(
+			"<!doctype html><html><head><title>t</title></head><body>" +
+				"<docs-header><a href='#'>Brand</a><span>Tagline</span></docs-header>" +
+				"</body></html>",
+			{ removeDataBindings: false, templesComponents: [DocsHeader] }
+		);
+
+		const html = await render({});
+
+		expect(html).toContain(
+			'<header class="docs-header"><a href="#">Brand</a><span>Tagline</span></header>'
+		);
+	});
+});
