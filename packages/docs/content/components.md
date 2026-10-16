@@ -148,6 +148,11 @@ The constructor stays a one-liner, the defaults live in one place, and TypeScrip
 constant against the state interface. The defaults also cover the attributes that the tag does
 not declare: `connectedCallback` only reads the attributes present on the tag.
 
+The constructor copies the initial object before it becomes reactive, so the constant is safe
+for a class with several instances: each instance gets its own `state`. The copy is **shallow**.
+A nested object or array is still shared by reference, so keep nested mutable state out of the
+constant: create it in the constructor, e.g. `super({ ...INITIAL_STATE, items: [] })`.
+
 ### Good practice: reflect the state with classes
 
 Derive the state class names inside the state itself. A helper method returns the class name
@@ -267,6 +272,84 @@ into `state`, but a state mutation does not write back to the attribute. A class
 
 Light DOM keeps the component themeable with the page's CSS variables. Tag-name scoping keeps
 the rules from leaking.
+
+## Slots: content authored on the tag
+
+A component can wrap the content the caller writes inside its tag. The template declares one or
+more `<slot>` elements, and the children authored on the tag are **projected** into them. This is
+the wrapper or shell shape: a header bar, a card, or a panel that lays out and styles content its
+caller provides.
+
+Components use the Light DOM, so there is no shadow tree and no native projection. The component
+projects the children itself: after the template renders, each `<slot>` is replaced by the
+matching children. Named slots use the `slot` attribute on the child and the `name` attribute on
+the slot. A slot with no matching children keeps its own fallback content; children that match no
+slot are appended after the template. The `<slot>` element never appears in the output.
+
+```typescript
+// site-header.ts
+import { TemplesComponent } from "@temples/components";
+import template from "./site-header.html" with { type: "text" };
+
+export class SiteHeader extends TemplesComponent {
+    constructor() {
+        super({});
+    }
+}
+
+TemplesComponent.define("site-header", SiteHeader, { template });
+```
+
+```html
+<!-- site-header.html -->
+<header class="site-header">
+    <slot></slot>
+</header>
+```
+
+```html
+<!-- usage: the children land inside the template's header -->
+<site-header>
+    <a class="brand" href="index.html">@temples</a>
+    <span class="tagline">templates you won't @</span>
+</site-header>
+```
+
+The component renders to the children inside its own markup:
+
+```html
+<site-header>
+    <header class="site-header">
+        <a class="brand" href="index.html">@temples</a>
+        <span class="tagline">templates you won't @</span>
+    </header>
+</site-header>
+```
+
+Named slots split the content into several regions. A child opts into a slot with `slot="name"`;
+the template marks the region with `<slot name="name">`. Fallback content is the slot's own
+children, kept when no child matches:
+
+```html
+<!-- panel.html -->
+<section class="panel">
+    <header><slot name="title">Untitled</slot></header>
+    <slot></slot>
+</section>
+```
+
+```html
+<panel>
+    <h2 slot="title">Settings</h2>
+    <p>General options.</p>
+</panel>
+```
+
+The `<h2>` fills `<slot name="title">`, the `<p>` fills the default `<slot>`. When no `slot="title"`
+child is authored, the fallback `Untitled` stays. Children that match no slot are appended after
+the template instead of being dropped.
+
+Nested slots — a slot inside a projected child — are not distributed.
 
 ## Lifecycle
 

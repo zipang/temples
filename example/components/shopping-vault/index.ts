@@ -1,5 +1,6 @@
 import { TemplesComponent } from "@temples/components";
 import { isShoppingItemData, type ShoppingItemData } from "../../types.ts";
+import { isIconButtonAction } from "../icon-button/index.ts";
 import template from "./shopping-vault.html" with { type: "text" };
 import "./shopping-vault.css";
 
@@ -42,12 +43,16 @@ export class ShoppingVault extends TemplesComponent<ShoppingVaultState> {
 
 	/**
 	 * Remove an item from the vault and publish it for recall.
+	 *
+	 * The `recall` action carries the emitting icon button; its `data-id`
+	 * identifies the vault entry to restore.
 	 */
-	recall(evt: Event): void {
-		const button = (evt.target as Element).closest("button.recall");
-		const id = button?.getAttribute("data-id");
+	recall(evt: CustomEvent): void {
+		if (!isIconButtonAction(evt.detail)) return;
 
-		if (id === null || id === undefined) return;
+		const id = evt.detail.source.getAttribute("data-id");
+
+		if (id === null) return;
 
 		const item = this.state.vaultItems.find((entry) => entry.id === id);
 
@@ -62,6 +67,6 @@ TemplesComponent.define("shopping-vault", ShoppingVault, {
 	template,
 	events: {
 		"shopping-item:removed": "collect",
-		"click .recall": "recall"
+		"icon-button:recall": "recall"
 	}
 });

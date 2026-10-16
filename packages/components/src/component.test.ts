@@ -936,3 +936,92 @@ describe("TemplesComponent css and global store", () => {
 		elt.remove();
 	});
 });
+
+describe("slot support", () => {
+	test("projects authored children into a default slot", () => {
+		class Box extends TemplesComponent {
+			static override tag = "slot-box";
+		}
+
+		TemplesComponent.define("slot-box", Box, {
+			template: '<div class="box"><slot></slot></div>'
+		});
+
+		const elt = document.createElement("slot-box") as Box;
+		const a = document.createElement("a");
+		a.textContent = "Brand";
+		elt.appendChild(a);
+		document.body.appendChild(elt);
+
+		expect(elt.querySelector(".box")?.innerHTML).toContain("<a>Brand</a>");
+		expect(elt.querySelector("slot")).toBeNull();
+		elt.remove();
+	});
+
+	test("slot content survives a parent re-render", () => {
+		class Shell extends TemplesComponent {
+			static override tag = "slot-shell";
+		}
+
+		TemplesComponent.define("slot-shell", Shell, {
+			template: '<div class="shell"><slot></slot></div>'
+		});
+
+		class Page extends TemplesComponent {
+			static override tag = "slot-page";
+
+			constructor() {
+				super({ n: 0 });
+			}
+		}
+
+		TemplesComponent.define("slot-page", Page, {
+			template:
+				'<section><span data-bind="text=n">0</span><slot-shell><a href="#">Brand</a></slot-shell></section>'
+		});
+
+		const page = document.createElement("slot-page") as Page;
+		document.body.appendChild(page);
+
+		expect(page.querySelector("slot-shell .shell a")?.textContent).toBe("Brand");
+
+		page.state.n = 1;
+
+		expect(page.querySelectorAll("slot-shell .shell a").length).toBe(1);
+		expect(page.querySelector("slot-shell")?.textContent).toBe("Brand");
+		page.remove();
+	});
+});
+
+describe("instance state isolation", () => {
+	test("two instances passing the same INITIAL_STATE constant keep separate state", () => {
+		type CardState = { title: string };
+
+		const INITIAL_STATE: CardState = { title: "" };
+
+		class Card extends TemplesComponent<CardState> {
+			static override tag = "iso-card";
+
+			constructor() {
+				super(INITIAL_STATE);
+			}
+		}
+
+		TemplesComponent.define("iso-card", Card, {
+			template: "<p data-bind='text=title'>?</p>",
+			attributes: { title: "string" }
+		});
+
+		const first = document.createElement("iso-card") as Card;
+		first.setAttribute("title", "First");
+		const second = document.createElement("iso-card") as Card;
+		second.setAttribute("title", "Second");
+		document.body.appendChild(first);
+		document.body.appendChild(second);
+
+		expect(first.querySelector("p")?.textContent).toBe("First");
+		expect(second.querySelector("p")?.textContent).toBe("Second");
+		first.remove();
+		second.remove();
+	});
+});

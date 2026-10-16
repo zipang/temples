@@ -1,5 +1,6 @@
 import { TemplesComponent } from "@temples/components";
 import type { ShoppingItemData } from "../../types.ts";
+import { isIconButtonAction } from "../icon-button/index.ts";
 import template from "./shopping-item.html" with { type: "text" };
 
 import "./shopping-item.css";
@@ -28,6 +29,19 @@ const INITIAL_STATE: ShoppingItemState = {
 		return this.editing ? "editing" : "";
 	}
 };
+
+/**
+ * Check that an icon button action comes from a button inside the owner.
+ *
+ * The bus broadcasts every action to every subscriber, so an item handles an
+ * action only when the emitting `icon-button` is one of its own.
+ *
+ * @param detail - The message payload received by the item.
+ * @param owner - The shopping item that received the message.
+ * @returns True when the payload carries an emitting host inside `owner`.
+ */
+const isOwnIconButton = (detail: unknown, owner: Element): boolean =>
+	isIconButtonAction(detail) && owner.contains(detail.source);
 
 /**
  * A single shopping list entry, configured through plain attributes.
@@ -79,6 +93,41 @@ export class ShoppingItem extends TemplesComponent<ShoppingItemState> {
 	}
 
 	/**
+	 * Apply a `save` action from one of this item's icon buttons.
+	 *
+	 * The action reaches every item on the shared bus, so it applies only when
+	 * the emitting button is inside this item.
+	 */
+	saveAction(evt: CustomEvent): void {
+		if (!isOwnIconButton(evt.detail, this)) return;
+
+		this.save();
+	}
+
+	/**
+	 * Apply a `remove` action from one of this item's icon buttons.
+	 *
+	 * The action reaches every item on the shared bus, so it applies only when
+	 * the emitting button is inside this item.
+	 */
+	removeAction(evt: CustomEvent): void {
+		if (!isOwnIconButton(evt.detail, this)) return;
+
+		this.removeItem();
+	}
+
+	/**
+	 * Commit the edited label when Enter is pressed in the edit input, as a
+	 * click on the Save icon button does.
+	 */
+	commitOnEnter(evt: KeyboardEvent): void {
+		if (evt.key !== "Enter") return;
+
+		evt.preventDefault();
+		this.save();
+	}
+
+	/**
 	 * Build the plain data payload carried by every message.
 	 */
 	private snapshot(): ShoppingItemData {
@@ -94,7 +143,8 @@ TemplesComponent.define("shopping-item", ShoppingItem, {
 	events: {
 		"change .toggle": "toggle",
 		"dblclick .label": "edit",
-		"click .save": "save",
-		"click .remove": "removeItem"
+		"keydown .edit-input": "commitOnEnter",
+		"icon-button:save": "saveAction",
+		"icon-button:remove": "removeAction"
 	}
 });

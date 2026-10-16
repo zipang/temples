@@ -17,19 +17,6 @@ shopping-item {
 		display: none;
 	}
 
-	button {
-		font: inherit;
-		background: #fff;
-		border: 1px solid #000;
-		padding: 0.25rem 0.5rem;
-		cursor: pointer;
-
-		&:hover {
-			background: #000;
-			color: #fff;
-		}
-	}
-
 	li.item {
 		display: flex;
 		align-items: center;
@@ -45,12 +32,8 @@ shopping-item {
 		}
 
 		&.editing {
-			button.edit {
-				display: none;
-			}
-
 			.edit-input,
-			button.save {
+			icon-button.save {
 				display: block;
 			}
 		}

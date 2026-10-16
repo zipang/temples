@@ -254,6 +254,16 @@ export class TemplesComponent<T extends object = Record<string, unknown>> extend
 	private unsubscribeState: (() => void) | null = null;
 
 	/**
+	 * The children authored on the tag, captured on the first connection and
+	 * projected into the template's `<slot>` elements.
+	 *
+	 * They are held here rather than read from `childNodes` on every render: a
+	 * transient disconnect destroys the rendered subtree, and a later connect
+	 * must project the same authored children again.
+	 */
+	private slotted: Node[] | null = null;
+
+	/**
 	 * The instance's active event bindings, mapping a binding to its resolved
 	 * handler method. Seeded from the class `events` map on connection and
 	 * extended by dynamic `on()` calls.
@@ -273,6 +283,12 @@ export class TemplesComponent<T extends object = Record<string, unknown>> extend
 	 * initial values with `super({ count: 0 })`; `connectedCallback` then seeds
 	 * the observed attributes and the global store on top of them.
 	 *
+	 * The initial object is copied before it becomes reactive, so two instances
+	 * of the same class never share one `state` — even when the subclass passes
+	 * a module-level constant. The copy is shallow: a nested object or array is
+	 * still shared by reference, so nested state must be created per instance
+	 * (pass it from the constructor) rather than baked into a shared constant.
+	 *
 	 * The `state` property is defined non-writable and non-configurable, so a
 	 * subclass that redeclares it as a class field breaks at construction
 	 * instead of silently replacing the reactive proxy.
@@ -283,7 +299,7 @@ export class TemplesComponent<T extends object = Record<string, unknown>> extend
 	constructor(state: T = {} as T) {
 		super();
 		Object.defineProperty(this, "state", {
-			value: reactive(state),
+			value: reactive({ ...state }),
 			writable: false,
 			enumerable: true,
 			configurable: false
@@ -500,10 +516,11 @@ export class TemplesComponent<T extends object = Record<string, unknown>> extend
 	/**
 	 * Render the state and seed the observed attributes.
 	 *
-	 * The template content is rendered into an internal container and then
-	 * adopted into the host. The host's own attributes are left untouched so a
-	 * parent component can feed it through `data-bind`; rendering against the
-	 * container prevents the renderer from stripping those attributes.
+	 * The template content is rendered into an internal container, the authored
+	 * children are projected into its slots, and the result is adopted into the
+	 * host. The host's own attributes are left untouched so a parent component
+	 * can feed it through `data-bind`; rendering against the container prevents
+	 * the renderer from stripping those attributes.
 	 *
 	 * Called by the browser when the element connects to the DOM.
 	 */
@@ -515,6 +532,10 @@ export class TemplesComponent<T extends object = Record<string, unknown>> extend
 
 		container.appendChild(content);
 		this.renderer = new Renderer(container);
+
+		// Capture the authored children once. On a later connection the host
+		// already holds the previously rendered markup, not the authored set.
+		if (this.slotted === null) this.slotted = Array.from(this.childNodes);
 
 		for (const name of ctor.observedAttributes) {
 			const state = this.state as Record<string, unknown>;
@@ -529,9 +550,12 @@ export class TemplesComponent<T extends object = Record<string, unknown>> extend
 			}
 		}
 
-		this.unsubscribeState = subscribe(this.state, () => this.rerender());
-		this.rerender();
+		this.renderer.render(this.state as TemplesData);
+		this.projectSlots(container);
 
+		while (container.firstChild !== null) this.appendChild(container.firstChild);
+
+		this.unsubscribeState = subscribe(this.state, () => this.rerender());
 		this.on(ctor.events);
 	}
 
@@ -668,20 +692,69 @@ export class TemplesComponent<T extends object = Record<string, unknown>> extend
 	/**
 	 * Re-render every binding from the current state.
 	 *
-	 * The container is re-rendered and its children are adopted into the host.
-	 * Keyed reconciliation reuses the same node objects across renders, so the
-	 * adoption moves them without losing input focus or scroll position.
+	 * The renderer updates the existing elements in place, so a state change
+	 * never detaches the subtree. A detached subtree would fire the nested
+	 * components' `disconnectedCallback`, which discards the DOM they hold —
+	 * including any content projected into their slots.
 	 */
 	private rerender(): void {
 		if (this.renderer === null) return;
 
-		const container = this.renderer.rootElt;
-
-		while (this.firstChild !== null) container.appendChild(this.firstChild);
-
 		this.renderer.render(this.state as TemplesData);
+	}
 
-		while (container.firstChild !== null) this.appendChild(container.firstChild);
+	/**
+	 * Distribute the authored children into the template's slots.
+	 *
+	 * Each `<slot>` or `<slot name="…">` receives the matching authored
+	 * children; a slot with no match keeps its own fallback content. Every slot
+	 * wrapper is then removed, promoting its projected or fallback children.
+	 * Authored children that match no slot are appended after the template.
+	 *
+	 * @param container - The rendered template root, holding the `<slot>`
+	 * elements.
+	 */
+	private projectSlots(container: Element): void {
+		const authored = this.slotted ?? [];
+		const slots = Array.from(container.querySelectorAll("slot"));
+		const assigned = new Set<Node>();
+
+		for (const slot of slots) {
+			const name = slot.getAttribute("name");
+			const matching =
+				name === null
+					? authored.filter(
+							(node) => !(node instanceof Element && node.getAttribute("slot") !== null)
+						)
+					: authored.filter(
+							(node) => node instanceof Element && node.getAttribute("slot") === name
+						);
+
+			if (matching.length === 0) continue;
+
+			slot.replaceChildren();
+
+			for (const node of matching) {
+				slot.appendChild(node);
+				assigned.add(node);
+			}
+		}
+
+		// Remove every <slot> wrapper, promoting its (projected or fallback) children.
+		for (const slot of slots) {
+			const parent = slot.parentNode;
+
+			if (parent === null) continue;
+
+			while (slot.firstChild !== null) parent.insertBefore(slot.firstChild, slot);
+
+			parent.removeChild(slot);
+		}
+
+		// Authored children that match no slot are appended after the template.
+		for (const node of authored) {
+			if (!assigned.has(node)) container.appendChild(node);
+		}
 	}
 
 	/**

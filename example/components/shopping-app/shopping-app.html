@@ -2,7 +2,9 @@
 	<h1 class="title" data-bind="text=title">Shopping List</h1>
 	<form class="add-form">
 		<input class="add-input" type="text" placeholder="Add an item…" autocomplete="off">
-		<button class="add-btn" type="submit">Add</button>
+		<icon-button type="submit" title="Add">
+			<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2h2v5h5v2H9v5H7V9H2V7h5z" /></svg>
+		</icon-button>
 	</form>
 	<ul class="items" data-iterate="item: items" data-key="id">
 		<shopping-item data-bind="id=item.id, label=item.label, checked=item.checked"></shopping-item>
