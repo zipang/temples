@@ -11,22 +11,20 @@
 	<link rel="icon" href="data:," />
 </head>
 <body>
-	<div class="site">
-		<header class="site-header">
-			<a class="brand" href="index.html">@temples</a>
-			<span class="tagline">templ(<em>at</em>)es that you won't @</span>
-		</header>
-		<div class="site-body">
-			<nav class="sidebar" aria-label="Pages">
-				<ul data-iterate="nav: site.pages">
-					<li><a href="index.html" data-bind="text=nav.title, href=nav.url, class[current]=nav.status">Page</a></li>
-				</ul>
-			</nav>
-			<main class="content" data-bind="html=page.content"></main>
-		</div>
-		<footer class="site-footer">
-			<p>Built with @temples — <a href="https://github.com/zipang/temples">source on GitHub</a>.</p>
-		</footer>
-	</div>
+	<header class="site-header">
+		<a class="brand" href="index.html">@temples</a>
+		<span class="tagline">templ(<em>at</em>)es that you won't @</span>
+	</header>
+	<nav class="sidebar" aria-label="Pages">
+		<ul data-iterate="nav: site.pages">
+			<li><a href="index.html" data-bind="text=nav.title, href=nav.url, class[current]=nav.status">Page</a></li>
+		</ul>
+	</nav>
+	<main class="content">
+		<article data-bind="html=page.content"></article>
+	</main>
+	<footer class="site-footer">
+		<p>Built with @temples — <a href="https://github.com/zipang/temples">source on GitHub</a>.</p>
+	</footer>
 </body>
 </html>
