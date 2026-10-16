@@ -20,20 +20,6 @@ shopping-app .add-input {
 	border: 1px solid #000;
 }
 
-shopping-app .add-btn {
-	font: inherit;
-	padding: 0.5rem 1rem;
-	border: 1px solid #000;
-	background: #000;
-	color: #fff;
-	cursor: pointer;
-}
-
-shopping-app .add-btn:hover {
-	background: #fff;
-	color: #000;
-}
-
 shopping-app .items {
 	list-style: none;
 	margin: 0;

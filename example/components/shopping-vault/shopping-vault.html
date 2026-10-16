@@ -3,7 +3,13 @@
 	<ul class="vault-list" data-iterate="item: vaultItems" data-key="id">
 		<li class="vault-item">
 			<span class="vault-label" data-bind="text=item.label"></span>
-			<button class="recall" type="button" data-bind="data-id=item.id">Recall</button>
+			<icon-button
+				action="recall"
+				title="Recall"
+				data-bind="data-id=item.id"
+			>
+				<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2 3 7h3v7h4V7h3z" /></svg>
+			</icon-button>
 		</li>
 	</ul>
 	<p class="empty" data-render-if="isEmpty">The vault is empty.</p>
