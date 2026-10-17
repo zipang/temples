@@ -11,37 +11,48 @@ the file, index it, verify it in the browser.
 
 - **One problem per file.** A human or an agent loads only the recipe it needs, so context stays
   small.
+- **A title names the problem, not the mechanism.** A reader searches for the task ("let a child
+  tell its parent"), not our words ("publishes an intent"). Write every title as the question a
+  developer asks.
 - **One shape per recipe.** Problem, Solution, Why it works, Pitfalls. A reader learns the pattern,
   not just the code.
 - **One domain for the set.** The recipes use a small cart (`cart-item`, `cart-list`, `cart-app`),
   consistent with the `messages` recipe. The example app in the repository is the fuller reference.
-- **The guide stays the path; a recipe stays the detail.** The guide explains the model. A recipe
-  shows one solution.
+- **The guide stays the index; a recipe stays the detail.** `components.md` keeps the API and one
+  pointer per concept. The recipe holds the explanation. When a recipe takes over a concept,
+  remove that concept from the guide.
+- **A recipe earns its place.** Write one only when the combination is not obvious. If the guide
+  already shows the mechanism (attributes, state, `class[...]`, slots), do not repeat it.
 
 ## Recipe set
 
-| # | Slug | Title | Order |
-|---|------|-------|-------|
-| 0 | `messages` | How to send messages | 10 (done) |
-| 1 | `reusable-child` | A reusable child that publishes an intent | 11 |
-| 2 | `parent-list` | Render a list of child components | 12 |
-| 3 | `share-a-change` | Share a change with the whole app | 13 |
-| 4 | `handle-input` | Handle a form input | 14 |
-| 5 | `edit-mode` | Toggle a read/edit mode | 15 |
-| 6 | `app-config` | Share app-wide configuration | 16 |
-| 7 | `payload-guard` | Narrow a message payload | 17 |
-| 8 | `connect-hook` | Run code when the component connects | 18 |
+| # | Slug | Title (the problem) | Order |
+|---|------|---------------------|-------|
+| 0 | `messages` | Communicate between loose components with a message bus | 10 (done) |
+| 1 | `list-of-children` | Render a list of children and let each one talk to the parent | 11 |
+| 2 | `share-state` | Share a value between components that do not know each other | 12 |
+| 3 | `form-input` | Read a form field and commit its value | 13 |
+| 4 | `async-states` | Show loading, empty, and error states | 14 |
+| 5 | `lifecycle` | Run code on connect and clean up on disconnect | 15 |
 
 Each recipe answers one question:
 
-1. `reusable-child` — how does a generic child tell its owner what the user asked for?
-2. `parent-list` — how does a parent render one child component per item?
-3. `share-a-change` — how does a component tell another component it does not know?
-4. `handle-input` — how does a component read a form value and commit it?
-5. `edit-mode` — how does a component switch between a read and an edit view?
-6. `app-config` — how does an app share one configuration value with every component?
-7. `payload-guard` — how does a handler narrow the `unknown` message payload?
-8. `connect-hook` — how does a component run code when it connects?
+1. `list-of-children` — how does a parent render one child per item, and how does each child tell
+   the parent what the user asked?
+2. `share-state` — how do components that do not know each other share one value?
+3. `form-input` — how does a component read a field and commit its value?
+4. `async-states` — how does a component show loading, empty, and error?
+5. `lifecycle` — how does a component run code on connect and clean up on disconnect?
+
+### Changes from the first draft
+
+- `reusable-child` and `parent-list` merge into `list-of-children`. A list of children that each
+  signal the parent is one code path, and it is the shape people build.
+- `share-a-change` and `app-config` merge into `share-state`.
+- `connect-hook` becomes `lifecycle`, and covers the disconnect cleanup too.
+- `payload-guard` becomes a section of `messages`. Narrowing a payload is a TypeScript concern,
+  not a component task.
+- `edit-mode` drops. It is a narrow case of a state toggle.
 
 ## Task List
 
@@ -58,14 +69,11 @@ For each recipe, run the same four steps. Focus only on the content of the curre
 
 Recipe tasks:
 
-- [ ] `reusable-child`
-- [ ] `parent-list`
-- [ ] `share-a-change`
-- [ ] `handle-input`
-- [ ] `edit-mode`
-- [ ] `app-config`
-- [ ] `payload-guard`
-- [ ] `connect-hook`
+- [ ] `list-of-children`
+- [ ] `share-state`
+- [ ] `form-input`
+- [ ] `async-states`
+- [ ] `lifecycle`
 
 ### Checkpoint: Complete
 
@@ -84,5 +92,9 @@ Recipe tasks:
 
 ## Open Questions
 
-- Do we need a `slots` recipe? The guide shows slots in full. Add it only if a reader asks.
-- Do we need a leaf-widget recipe? The guide's `flipping-card` walkthrough already covers it.
+- Do we need a `slots` recipe (a card or a shell)? The guide shows slots in full. Add it only if a
+  reader asks.
+- Do we need a recipe for a display value or a state class? The guide's `class[...]` section
+  already covers it.
+- Where does the payload guard live? Today it is a section of `messages`. Move it out only if it
+  grows.
