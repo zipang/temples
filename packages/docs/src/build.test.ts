@@ -103,9 +103,11 @@ describe("docs build", () => {
 
 		const recipe = await Bun.file(resolve(wwwDir, "recipes", "messages.html")).text();
 
-		expect(recipe).toContain("How to send messages");
+		expect(recipe).toContain("Communicate between loose components with a message bus");
 		expect(recipe).toContain('href="../assets/style.css"');
 		expect(recipe).toContain('href="../components.html"');
+		expect(recipe).toContain(`href="${siteUrl}/components.html#events-and-messaging"`);
+		expect(recipe).toContain('href="https://martinfowler.com/articles/201701-event-driven.html"');
 
 		const markdown = Bun.file(resolve(wwwDir, "recipes", "messages.md"));
 

@@ -256,22 +256,9 @@ adds runtime bindings the same way.
 ### Good practice: separate the intent from the change
 
 A component that owns its data marks a local action and a shared change with two messages on one
-family channel.
-
-- The **intent** names the user action, for example `shopping-item:save` and
-  `shopping-item:remove`. A reusable child, such as an icon button, publishes the intent. The
-  owner is the nearest subscribed ancestor. It handles the intent and calls `stopPropagation()`,
-  so the intent never reaches the other instances.
-- The **change** names the result, for example `shopping-item:updated` and
-  `shopping-item:removed`. The owner publishes the change after it updates its state. The owner
-  does not stop a change that other components need.
-
-Name a message handler `on<EventName>`, with the channel in PascalCase. For example,
-`onShoppingItemUpdated` handles `shopping-item:updated`. The name tells a message handler apart
-from a DOM handler at a glance.
-
-A channel groups a domain family, not a component class. Two components can publish on one
-channel.
+family channel. The intent names the user action and stops at the owner. The change names the
+result and reaches every subscriber. See
+[Communicate between loose components with a message bus](recipes/messages.html).
 
 ## Styling
 
@@ -395,5 +382,5 @@ Nested slots — a slot inside a projected child — are not distributed.
 
 ## Recipes and good practices
 
-- [How to send messages](recipes/messages.html) — send an intent up to the owner and a change
-  out to the app.
+- [Communicate between loose components with a message bus](recipes/messages.html) — one message
+  asks the owner, and one message reports the change to the app.
