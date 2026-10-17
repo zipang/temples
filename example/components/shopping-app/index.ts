@@ -17,9 +17,13 @@ type ShoppingAppState = {
  * The root of the shopping list, owning the shared list of items.
  *
  * The app seeds its `title` from the global store, renders one `shopping-item`
- * per entry, and coordinates every change through the message bus: it emits
- * `created` on add, and subscribes to `shopping-item:updated`,
- * `shopping-item:removed`, and `shopping-vault:recalled`.
+ * per entry, and updates the list from the change messages of the children:
+ * `shopping-item:updated`, `shopping-item:removed`, and
+ * `shopping-vault:recalled`. A new item is added locally, so the add needs no
+ * message.
+ *
+ * The app handles `shopping-item:removed` without stopping the walk, so the
+ * vault also receives the change and collects the removed item.
  */
 export class ShoppingApp extends TemplesComponent<ShoppingAppState> {
 	constructor() {
@@ -33,7 +37,7 @@ export class ShoppingApp extends TemplesComponent<ShoppingAppState> {
 	}
 
 	/**
-	 * Create a new item from the add form and publish it.
+	 * Create a new item from the add form and add it to the list.
 	 */
 	addItem(evt: Event): void {
 		evt.preventDefault();
@@ -44,10 +48,7 @@ export class ShoppingApp extends TemplesComponent<ShoppingAppState> {
 
 		if (!input || !label) return;
 
-		const item: ShoppingItemData = { id: crypto.randomUUID(), label, checked: false };
-
-		this.state.items.push(item);
-		this.emit("created", item);
+		this.state.items.push({ id: crypto.randomUUID(), label, checked: false });
 
 		// RAZ and refocus
 		input.value = "";
@@ -57,7 +58,7 @@ export class ShoppingApp extends TemplesComponent<ShoppingAppState> {
 	/**
 	 * Apply an updated item to the matching entry.
 	 */
-	updateItem(evt: CustomEvent): void {
+	onShoppingItemUpdated(evt: CustomEvent): void {
 		if (!isShoppingItemData(evt.detail)) return;
 
 		const item = evt.detail;
@@ -71,8 +72,10 @@ export class ShoppingApp extends TemplesComponent<ShoppingAppState> {
 
 	/**
 	 * Drop the removed item from the active list.
+	 *
+	 * The walk is not stopped, so the vault also receives the change.
 	 */
-	removeItem(evt: CustomEvent): void {
+	onShoppingItemRemoved(evt: CustomEvent): void {
 		if (!isShoppingItemData(evt.detail)) return;
 
 		this.state.items = this.state.items.filter((entry) => entry.id !== evt.detail.id);
@@ -81,7 +84,7 @@ export class ShoppingApp extends TemplesComponent<ShoppingAppState> {
 	/**
 	 * Restore a recalled item back into the active list.
 	 */
-	recallItem(evt: CustomEvent): void {
+	onShoppingVaultRecalled(evt: CustomEvent): void {
 		if (!isShoppingItemData(evt.detail)) return;
 
 		this.state.items.push(evt.detail);
@@ -93,9 +96,9 @@ TemplesComponent.define("shopping-app", ShoppingApp, {
 	attributes: { title: "string" },
 	events: {
 		"submit .add-form": "addItem",
-		"shopping-item:updated": "updateItem",
-		"shopping-item:removed": "removeItem",
-		"shopping-vault:recalled": "recallItem"
+		"shopping-item:updated": "onShoppingItemUpdated",
+		"shopping-item:removed": "onShoppingItemRemoved",
+		"shopping-vault:recalled": "onShoppingVaultRecalled"
 	},
 	globalStore: { title: "My Shopping List" }
 });

@@ -23,19 +23,27 @@ const INITIAL_STATE: ShoppingVaultState = {
 /**
  * A holding place for removed items, with a way to bring them back.
  *
- * The vault listens to `shopping-item:removed` and collects the removed items.
- * Each entry exposes a recall button that emits `recalled`, which the app uses
- * to restore the item into the active list.
+ * The vault subscribes to `shopping-item:removed`, a change message the item
+ * publishes. The vault is a decoupled subscriber: the item does not know it,
+ * so the message travels on the bus after the app handles it. Each entry
+ * exposes a recall button that sends `shopping-vault:recalled`, which the app
+ * uses to restore the item into the active list.
+ *
+ * The recall button sends the `shopping-vault:recall` intent. The vault is the
+ * nearest subscribed ancestor of its own button, so it receives the intent
+ * first and stops the walk.
  */
 export class ShoppingVault extends TemplesComponent<ShoppingVaultState> {
 	constructor() {
-		super(INITIAL_STATE);
+		// `vaultItems` is a container: create it per instance, so two vaults
+		// never share one array.
+		super({ ...INITIAL_STATE, vaultItems: [] });
 	}
 
 	/**
 	 * Collect a removed item into the vault.
 	 */
-	collect(evt: CustomEvent): void {
+	onShoppingItemRemoved(evt: CustomEvent): void {
 		if (!isShoppingItemData(evt.detail)) return;
 
 		this.state.vaultItems.push(evt.detail);
@@ -44,10 +52,12 @@ export class ShoppingVault extends TemplesComponent<ShoppingVaultState> {
 	/**
 	 * Remove an item from the vault and publish it for recall.
 	 *
-	 * The `recall` action carries the emitting icon button; its `data-id`
+	 * The `recall` intent carries the emitting icon button; its `data-id`
 	 * identifies the vault entry to restore.
 	 */
-	recall(evt: CustomEvent): void {
+	onShoppingVaultRecall(evt: CustomEvent): void {
+		evt.stopPropagation();
+
 		if (!isIconButtonAction(evt.detail)) return;
 
 		const id = evt.detail.source.getAttribute("data-id");
@@ -59,14 +69,14 @@ export class ShoppingVault extends TemplesComponent<ShoppingVaultState> {
 		if (item === undefined) return;
 
 		this.state.vaultItems = this.state.vaultItems.filter((entry) => entry.id !== id);
-		this.emit("recalled", item);
+		this.emit("shopping-vault:recalled", item);
 	}
 }
 
 TemplesComponent.define("shopping-vault", ShoppingVault, {
 	template,
 	events: {
-		"shopping-item:removed": "collect",
-		"icon-button:recall": "recall"
+		"shopping-item:removed": "onShoppingItemRemoved",
+		"shopping-vault:recall": "onShoppingVaultRecall"
 	}
 });

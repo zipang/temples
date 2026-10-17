@@ -4,10 +4,10 @@ import template from "./icon-button.html" with { type: "text" };
 import "./icon-button.css";
 
 /**
- * The payload published by an `icon-button` action event.
+ * The payload published by an `icon-button` action message.
  *
- * `source` is the `icon-button` host that fired, so a parent with several
- * buttons reacts only to its own.
+ * `source` is the `icon-button` host that fired, so a subscriber can read the
+ * button attributes, such as `data-id`.
  */
 export interface IconButtonAction {
 	source: Element;
@@ -31,7 +31,7 @@ export const isIconButtonAction = (value: unknown): value is IconButtonAction =>
  *
  * `title` labels the button and feeds its native tooltip; `type` is the native
  * button type (`"button"` by default, `"submit"` inside a form); `action` names
- * what the button does and travels with the click message.
+ * the message channel the button publishes on a click.
  */
 type IconButtonState = {
 	title: string;
@@ -50,13 +50,13 @@ const INITIAL_STATE: IconButtonState = {
  *
  * The `title` attribute feeds the accessible name, while the default `slot`
  * receives the icon markup — an inline SVG. A click publishes the `action`
- * attribute as the event name (`icon-button:save`, `icon-button:remove`), so
- * the message reads as the intent, not as a generic click. The payload carries
- * the host element as `source`: the bus broadcasts to every subscriber, so a
- * parent that owns several buttons uses `source` to handle only its own.
+ * attribute as a message channel (`shopping-item:save`), so the message reads
+ * as the intent, not as a generic click. The payload carries the host element
+ * as `source`.
  *
- * With `type="submit"` the button submits its form instead, and no action is
- * published.
+ * The message bubbles to the nearest subscribed ancestor, so the owner of the
+ * button handles the intent and stops the walk. With `type="submit"` the button
+ * submits its form instead, and no message is published.
  */
 export class IconButton extends TemplesComponent<IconButtonState> {
 	constructor() {
@@ -64,8 +64,7 @@ export class IconButton extends TemplesComponent<IconButtonState> {
 	}
 
 	/**
-	 * Publish the button action, named by the event, when the inner button is
-	 * clicked.
+	 * Publish the button intent, named by the `action` attribute, on a click.
 	 */
 	onClick(): void {
 		if (this.state.action === "") return;

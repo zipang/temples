@@ -1,6 +1,5 @@
 import { TemplesComponent } from "@temples/components";
 import type { ShoppingItemData } from "../../types.ts";
-import { isIconButtonAction } from "../icon-button/index.ts";
 import template from "./shopping-item.html" with { type: "text" };
 
 import "./shopping-item.css";
@@ -11,7 +10,6 @@ import "./shopping-item.css";
  * helpers the template calls.
  */
 type ShoppingItemState = ShoppingItemData & {
-	checked: boolean;
 	editing: boolean;
 	checkedStatus(): string;
 	editingStatus(): string;
@@ -31,26 +29,22 @@ const INITIAL_STATE: ShoppingItemState = {
 };
 
 /**
- * Check that an icon button action comes from a button inside the owner.
- *
- * The bus broadcasts every action to every subscriber, so an item handles an
- * action only when the emitting `icon-button` is one of its own.
- *
- * @param detail - The message payload received by the item.
- * @param owner - The shopping item that received the message.
- * @returns True when the payload carries an emitting host inside `owner`.
- */
-const isOwnIconButton = (detail: unknown, owner: Element): boolean =>
-	isIconButtonAction(detail) && owner.contains(detail.source);
-
-/**
  * A single shopping list entry, configured through plain attributes.
  *
  * `id`, `label`, and `checked` are observed attributes declared in the
  * `attributes` map of `define()`, fed by the parent `shopping-app`. `editing`
- * is internal state that toggles the inline editor. The component never
- * mutates the shared list directly: it emits `updated` and `removed` messages
- * carrying the full item, and the app owns the data.
+ * is internal state that toggles the inline editor.
+ *
+ * The item owns the data it shows. When the user changes it, the item publishes
+ * a change message on the `shopping-item` channel: `shopping-item:updated` on
+ * an edit or a toggle, and `shopping-item:removed` on a removal. The app
+ * subscribes to both, and the vault subscribes to `shopping-item:removed`. The
+ * item never mutates the shared list directly.
+ *
+ * The item also handles the intents from its own icon buttons. The button sends
+ * `shopping-item:save` or `shopping-item:remove`; the item is the nearest
+ * subscribed ancestor, so it receives the intent first and stops the walk. The
+ * intent never reaches the other items.
  */
 export class ShoppingItem extends TemplesComponent<ShoppingItemState> {
 	constructor() {
@@ -62,7 +56,7 @@ export class ShoppingItem extends TemplesComponent<ShoppingItemState> {
 	 */
 	toggle(): void {
 		this.state.checked = !this.state.checked;
-		this.emit("updated", this.snapshot());
+		this.emit("shopping-item:updated", this.snapshot());
 	}
 
 	/**
@@ -81,7 +75,7 @@ export class ShoppingItem extends TemplesComponent<ShoppingItemState> {
 
 		if (label === "") return;
 
-		this.emit("updated", { id: this.state.id, label, checked: this.state.checked });
+		this.emit("shopping-item:updated", { id: this.state.id, label, checked: this.state.checked });
 		this.state.editing = false;
 	}
 
@@ -89,30 +83,28 @@ export class ShoppingItem extends TemplesComponent<ShoppingItemState> {
 	 * Publish a removal request for this item.
 	 */
 	removeItem(): void {
-		this.emit("removed", this.snapshot());
+		this.emit("shopping-item:removed", this.snapshot());
 	}
 
 	/**
-	 * Apply a `save` action from one of this item's icon buttons.
+	 * Apply a `save` intent from one of this item's icon buttons.
 	 *
-	 * The action reaches every item on the shared bus, so it applies only when
-	 * the emitting button is inside this item.
+	 * The intent bubbles to the nearest subscribed ancestor, this item. The item
+	 * stops the walk so the intent stays local to the item that owns the button.
 	 */
-	saveAction(evt: CustomEvent): void {
-		if (!isOwnIconButton(evt.detail, this)) return;
-
+	onShoppingItemSave(evt: CustomEvent): void {
+		evt.stopPropagation();
 		this.save();
 	}
 
 	/**
-	 * Apply a `remove` action from one of this item's icon buttons.
+	 * Apply a `remove` intent from one of this item's icon buttons.
 	 *
-	 * The action reaches every item on the shared bus, so it applies only when
-	 * the emitting button is inside this item.
+	 * The intent bubbles to the nearest subscribed ancestor, this item. The item
+	 * stops the walk so the intent stays local to the item that owns the button.
 	 */
-	removeAction(evt: CustomEvent): void {
-		if (!isOwnIconButton(evt.detail, this)) return;
-
+	onShoppingItemRemove(evt: CustomEvent): void {
+		evt.stopPropagation();
 		this.removeItem();
 	}
 
@@ -144,7 +136,7 @@ TemplesComponent.define("shopping-item", ShoppingItem, {
 		"change .toggle": "toggle",
 		"dblclick .label": "edit",
 		"keydown .edit-input": "commitOnEnter",
-		"icon-button:save": "saveAction",
-		"icon-button:remove": "removeAction"
+		"shopping-item:save": "onShoppingItemSave",
+		"shopping-item:remove": "onShoppingItemRemove"
 	}
 });

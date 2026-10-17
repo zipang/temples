@@ -2,10 +2,10 @@
 	<input type="checkbox" class="toggle" data-bind="checked=checked">
 	<span class="label" data-bind="text=label, hidden=editing"></span>
 	<input type="text" class="edit-input" name="label" data-bind="value=label">
-	<icon-button class="save" action="save" title="Save" hidden>
+	<icon-button class="save" action="shopping-item:save" title="Save" hidden>
 		<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 12.4 1.6 8 3 6.6l3 3 6.6-6.6L14 4.4z" /></svg>
 	</icon-button>
-	<icon-button class="remove" action="remove" title="Remove">
+	<icon-button class="remove" action="shopping-item:remove" title="Remove">
 		<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 1h4v2h4v2H2V3h4zM3.5 6h9L11.5 15h-7z" /></svg>
 	</icon-button>
 </li>
