@@ -13,10 +13,12 @@ export type AttributeType = "boolean" | "number" | "json" | "string";
 /**
  * Handler invoked by an event binding.
  *
- * A handler is a component method that receives the event — either a DOM event
+ * A handler is a component method that receives an event — either a DOM event
  * (`"eventType selector"` binding) or a `CustomEvent` carrying a message
- * (`"tag:name"` binding). It runs with `this` bound to the component instance,
- * so handlers can read `this.state` and call other component methods directly.
+ * (`"family:action"` binding). It runs with `this` bound to the component
+ * instance, so handlers can read `this.state` and call other component methods
+ * directly. A handler can call `event.stopPropagation()` to stop the walk, as a
+ * native event handler does.
  */
 export type EventHandler = (this: TemplesComponent<object>, event: Event) => void;
 
@@ -25,10 +27,10 @@ export type EventHandler = (this: TemplesComponent<object>, event: Event) => voi
  *
  * Each key maps to the name of a handler method on the component class. A key
  * with a space is a DOM binding, `"eventType selector"` (e.g.
- * `"click .add-btn"`), run when an event of that type bubbles from an element
- * matching the selector. A key without a space is an inter-component message
- * name, `"tag:name"` (e.g. `"shopping-item:updated"`), delivered by the shared
- * event bus. Both are handled by the same method-name lookup.
+ * `"click .add-btn"`), run when an event of that type bubbles to this component
+ * from an element matching the selector. A key without a space is a message
+ * channel, `"family:action"` (e.g. `"shopping-item:updated"`), delivered by the
+ * shared message bus. Both are handled by the same method-name lookup.
  */
 export type EventMap = Record<string, string>;
 
@@ -145,34 +147,112 @@ interface MessageSubscription {
 const documentListeners = new Map<string, (event: Event) => void>();
 
 /**
- * Shared messaging bus, mapping a fully qualified message name to its handlers.
+ * Shared message bus, mapping a channel name to its handlers.
  *
  * Every component emits and subscribes through the same bus, so any component
- * can talk to any other regardless of class or DOM position. Message names are
- * prefixed with the emitting tag (`task-item:completed`) to keep classes from
- * colliding on the same local name.
+ * can talk to any other regardless of class or DOM position. The author chooses
+ * the channel name (`family:action`), so related messages share one channel and
+ * several components can publish on it.
  */
 const messageHandlers = new Map<string, Set<MessageSubscription>>();
 
 /**
- * Deliver a message to every subscribed handler.
+ * Collect a component and its component ancestors, nearest first.
  *
- * A snapshot of the handler set is iterated so a handler that unsubscribes
- * during dispatch does not affect the current delivery. Each handler runs with
- * `this` bound to its owning component.
+ * Walks the DOM parent chain from the component upward and keeps every
+ * `TemplesComponent` instance. The first entry is the component itself, the
+ * last is the outermost component ancestor.
  *
- * @param type - The fully qualified message name.
- * @param detail - The payload delivered on the message's `detail` property.
+ * @param from - The component to start from.
+ * @returns The component and its component ancestors, nearest first.
  */
-const dispatchMessage = (type: string, detail: unknown): void => {
+const componentAncestors = (from: TemplesComponent<object>): TemplesComponent<object>[] => {
+	const ancestors: TemplesComponent<object>[] = [];
+
+	for (let node: Node | null = from; node !== null; node = node.parentNode) {
+		if (node instanceof TemplesComponent) ancestors.push(node);
+	}
+
+	return ancestors;
+};
+
+/**
+ * Order message subscriptions for delivery, inside out.
+ *
+ * A subscription whose component is an ancestor of the emitter comes first,
+ * nearest ancestor first. Every other subscription is a decoupled bus
+ * subscriber and comes last, in registration order. The two groups partition
+ * the set, so no subscription is delivered twice.
+ *
+ * @param subscriptions - The subscribers of the channel.
+ * @param emitter - The component that published the message.
+ * @returns The subscriptions in delivery order.
+ */
+const orderSubscriptions = (
+	subscriptions: MessageSubscription[],
+	emitter: TemplesComponent<object>
+): MessageSubscription[] => {
+	const ancestors = componentAncestors(emitter);
+	const inTree: Array<{ depth: number; subscription: MessageSubscription }> = [];
+	const decoupled: MessageSubscription[] = [];
+
+	for (const subscription of subscriptions) {
+		const depth = ancestors.indexOf(subscription.component);
+
+		if (depth === -1) decoupled.push(subscription);
+		else inTree.push({ depth, subscription });
+	}
+
+	inTree.sort((a, b) => a.depth - b.depth);
+
+	return [...inTree.map((entry) => entry.subscription), ...decoupled];
+};
+
+/**
+ * Deliver a message to its subscribers, inside out.
+ *
+ * Subscribers that are ancestors of the emitter receive the message first, the
+ * nearest one first, then the remaining (decoupled) subscribers of the bus. A
+ * handler that calls `stopPropagation()` stops the walk: the outer ancestors
+ * and the bus subscribers receive nothing. Each subscription is delivered once.
+ *
+ * @param type - The message channel name.
+ * @param detail - The payload delivered on the message's `detail` property.
+ * @param emitter - The component that published the message.
+ */
+const dispatchMessage = (
+	type: string,
+	detail: unknown,
+	emitter: TemplesComponent<object>
+): void => {
 	const subscriptions = messageHandlers.get(type);
 
 	if (subscriptions === undefined) return;
 
 	const event = new CustomEvent(type, { detail });
 
-	for (const { component, handler } of [...subscriptions]) handler.call(component, event);
+	for (const { component, handler } of orderSubscriptions([...subscriptions], emitter)) {
+		if (event.cancelBubble) break;
+
+		if (!isDeliverable(component)) continue;
+
+		handler.call(component, event);
+	}
 };
+
+/**
+ * Check that a component can receive a message.
+ *
+ * A component inside a `<template>` is inert markup, not a live component. The
+ * framework keeps every class template in the document head, so this guard
+ * excludes the instances parsed for that template. It also excludes the unused
+ * instance linkedom connects when a browser would keep the content inert.
+ *
+ * @param component - The candidate subscriber.
+ * @returns True when the component is not inside a template.
+ */
+const isDeliverable = (component: TemplesComponent<object>): boolean =>
+	component.closest("template") === null;
 
 /**
  * Base class for declarative Web Components with reactive state.
@@ -213,9 +293,9 @@ export class TemplesComponent<T extends object = Record<string, unknown>> extend
 	/**
 	 * Optional declarative event map, mapping a binding to a handler method name.
 	 *
-	 * A binding is either `"eventType selector"` (DOM event) or `"tag:name"`
-	 * (inter-component message). Handlers are methods on the component class,
-	 * run with `this` bound to the component instance.
+	 * A binding is either `"eventType selector"` (DOM event) or `"family:action"`
+	 * (message channel). Handlers are methods on the component class, run with
+	 * `this` bound to the component instance.
 	 */
 	static events: EventMap = {};
 
@@ -418,49 +498,52 @@ export class TemplesComponent<T extends object = Record<string, unknown>> extend
 	/**
 	 * Handle a document-level event for one event type.
 	 *
-	 * The closest `TemplesComponent` ancestor of the event target owns the
-	 * event: only its instance `eventHandlers` map is consulted, and a missing
-	 * selector match there leaves outer components untouched. The matched
-	 * handler runs with `this` bound to the owning component.
+	 * The event walks the component tree from the target upward, like a native
+	 * bubbling event: the closest component handles it first, then each outer
+	 * component, until a handler calls `stopPropagation()`. A binding matches
+	 * inside the subtree of the component that owns it, and on the component
+	 * itself. Each matched handler runs with `this` bound to its component.
 	 *
 	 * @param type - The event type this listener was registered for.
 	 * @param event - The event that bubbled to the document.
 	 */
 	private static dispatch(type: string, event: Event): void {
-		const component = TemplesComponent.resolveComponent(event);
+		for (const component of TemplesComponent.componentPath(event)) {
+			if (event.cancelBubble) return;
 
-		if (component === null) return;
+			for (const [binding, handler] of Object.entries(component.eventHandlers)) {
+				const separator = binding.indexOf(" ");
+				const bindingType = binding.slice(0, separator);
 
-		for (const [binding, handler] of Object.entries(component.eventHandlers)) {
-			const separator = binding.indexOf(" ");
-			const bindingType = binding.slice(0, separator);
+				if (bindingType !== type) continue;
 
-			if (bindingType !== type) continue;
+				const selector = binding.slice(separator + 1).trim();
 
-			const selector = binding.slice(separator + 1).trim();
-
-			if (TemplesComponent.matchesSelector(event, selector, component)) {
-				handler.call(component, event);
+				if (TemplesComponent.matchesSelector(event, selector, component)) {
+					handler.call(component, event);
+				}
 			}
 		}
 	}
 
 	/**
-	 * Find the closest `TemplesComponent` ancestor of the event target.
+	 * Collect the component ancestors of an event target, closest first.
 	 *
-	 * Walks the composed path from the target upward and returns the first
-	 * element that is a component instance, or null when the event originates
-	 * outside every component.
+	 * Walks the composed path from the target upward and keeps every
+	 * `TemplesComponent` instance. The order drives DOM event bubbling across
+	 * components.
 	 *
-	 * @param event - The event whose target to resolve.
-	 * @returns The closest component ancestor, or null.
+	 * @param event - The event whose component ancestors to collect.
+	 * @returns The component ancestors of the event target, closest first.
 	 */
-	private static resolveComponent(event: Event): TemplesComponent<object> | null {
+	private static componentPath(event: Event): TemplesComponent<object>[] {
+		const path: TemplesComponent<object>[] = [];
+
 		for (const node of event.composedPath()) {
-			if (node instanceof TemplesComponent) return node;
+			if (node instanceof TemplesComponent) path.push(node);
 		}
 
-		return null;
+		return path;
 	}
 
 	/**
@@ -563,9 +646,8 @@ export class TemplesComponent<T extends object = Record<string, unknown>> extend
 	 * Release the state subscription, the event bindings, and the children.
 	 *
 	 * Message subscriptions are unsubscribed so a removed component stops
-	 * receiving inter-component messages. Document-level event listeners
-	 * persist for the lifetime of the document and are not tied to any single
-	 * instance.
+	 * receiving messages. Document-level event listeners persist for the
+	 * lifetime of the document and are not tied to any single instance.
 	 *
 	 * Called by the browser when the element disconnects from the DOM.
 	 */
@@ -600,19 +682,20 @@ export class TemplesComponent<T extends object = Record<string, unknown>> extend
 	}
 
 	/**
-	 * Emit a message on the shared event bus.
+	 * Publish a message on the shared message bus.
 	 *
-	 * The message is delivered under the fully qualified name `<tag>:<name>`, so
-	 * an emitter writes a short local name and classes never collide. Subscribers
-	 * elsewhere register `"<tag>:<name>"` in their `events` map.
+	 * The channel name is used verbatim, so the author groups messages by domain
+	 * family: `this.emit("shopping-item:updated", item)`. Several components can
+	 * publish on one channel. Subscribers register the same name in their
+	 * `events` map. The message bubbles: the nearest subscribed ancestor handles
+	 * it first, then the outer ancestors, then the decoupled subscribers. A
+	 * handler stops the walk with `event.stopPropagation()`.
 	 *
-	 * @param eventName - The local message name, prefixed with the emitting tag.
+	 * @param channel - The channel name, chosen by the author (`family:action`).
 	 * @param detail - Optional payload delivered on the message's `detail`.
 	 */
-	emit(eventName: string, detail?: unknown): void {
-		const ctor = this.constructor as typeof TemplesComponent;
-
-		dispatchMessage(`${ctor.tag}:${eventName}`, detail);
+	emit(channel: string, detail?: unknown): void {
+		dispatchMessage(channel, detail, this);
 	}
 
 	/**
@@ -620,9 +703,9 @@ export class TemplesComponent<T extends object = Record<string, unknown>> extend
 	 *
 	 * Each binding maps to a handler method name. A binding with a space is a
 	 * DOM event, `"eventType selector"`, delivered by a shared document
-	 * listener; a binding without a space is an inter-component message,
-	 * `"tag:name"`, delivered by the shared event bus. In both cases the handler
-	 * runs with `this` bound to this component.
+	 * listener; a binding without a space is a message channel, `"family:action"`,
+	 * delivered by the shared message bus. In both cases the handler runs with
+	 * `this` bound to this component.
 	 *
 	 * The class `events` map is registered automatically on connection; this
 	 * method also lets a component add bindings at runtime.
@@ -663,13 +746,13 @@ export class TemplesComponent<T extends object = Record<string, unknown>> extend
 	}
 
 	/**
-	 * Subscribe this component to a message on the shared event bus.
+	 * Subscribe this component to a message channel on the shared message bus.
 	 *
 	 * The subscription is stored with the owning component so delivery runs the
 	 * handler with `this` bound to it. The unsubscribe function is retained so
 	 * `disconnectedCallback` can release every subscription of the instance.
 	 *
-	 * @param name - The fully qualified message name to listen for.
+	 * @param name - The message channel name to listen for.
 	 * @param handler - The handler method invoked with the delivered `CustomEvent`.
 	 */
 	private subscribeMessage(name: string, handler: EventHandler): void {

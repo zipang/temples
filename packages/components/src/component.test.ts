@@ -649,19 +649,18 @@ describe("TemplesComponent events", () => {
 		second.remove();
 	});
 
-	test("resolves the closest component and ignores outer handlers", () => {
-		const innerHits: TemplesComponent[] = [];
-		const outerHits: TemplesComponent[] = [];
+	test("bubbles a DOM event from the closest component to the outer components", () => {
+		const hits: string[] = [];
 
 		class Inner extends TemplesComponent {
 			onAct(): void {
-				innerHits.push(this);
+				hits.push("inner");
 			}
 		}
 
 		class Outer extends TemplesComponent {
 			onAct(): void {
-				outerHits.push(this);
+				hits.push("outer");
 			}
 		}
 
@@ -680,9 +679,43 @@ describe("TemplesComponent events", () => {
 		const inner = outer.querySelector("event-inner") as Inner;
 		inner.querySelector("button")?.dispatchEvent(new Event("click", { bubbles: true }));
 
-		expect(innerHits).toHaveLength(1);
-		expect(innerHits[0]).toBe(inner);
-		expect(outerHits).toHaveLength(0);
+		expect(hits).toEqual(["inner", "outer"]);
+
+		outer.remove();
+	});
+
+	test("a DOM handler stops the walk to the outer components with stopPropagation", () => {
+		const hits: string[] = [];
+
+		class Inner extends TemplesComponent {
+			onAct(evt: Event): void {
+				hits.push("inner");
+				evt.stopPropagation();
+			}
+		}
+
+		class Outer extends TemplesComponent {
+			onAct(): void {
+				hits.push("outer");
+			}
+		}
+
+		TemplesComponent.define("event-stop-inner", Inner, {
+			template: "<button class='act'>go</button>",
+			events: { "click .act": "onAct" }
+		});
+		TemplesComponent.define("event-stop-outer", Outer, {
+			template: "<event-stop-inner></event-stop-inner>",
+			events: { "click .act": "onAct" }
+		});
+
+		const outer = document.createElement("event-stop-outer") as Outer;
+		document.body.appendChild(outer);
+
+		const inner = outer.querySelector("event-stop-inner") as Inner;
+		inner.querySelector("button")?.dispatchEvent(new Event("click", { bubbles: true }));
+
+		expect(hits).toEqual(["inner"]);
 
 		outer.remove();
 	});
@@ -740,7 +773,7 @@ describe("TemplesComponent events", () => {
 });
 
 describe("TemplesComponent messaging", () => {
-	test("emits a tag-prefixed message that a different class can subscribe to", () => {
+	test("emits a message on the channel the author chooses", () => {
 		const received: Array<{ evt: CustomEvent; self: TemplesComponent }> = [];
 
 		class TaskItem extends TemplesComponent {}
@@ -761,28 +794,25 @@ describe("TemplesComponent messaging", () => {
 		const item = document.createElement("msg-item-a") as TaskItem;
 		const list = document.createElement("msg-list-a") as TaskList;
 
-		list.on({ "msg-item-a:completed": "onCompleted" });
-		item.emit("completed", { id: 1 });
+		list.on({ "task:completed": "onCompleted" });
+		item.emit("task:completed", { id: 1 });
 
 		expect(received).toHaveLength(1);
-		expect(received[0]?.evt.type).toBe("msg-item-a:completed");
+		expect(received[0]?.evt.type).toBe("task:completed");
 		expect(received[0]?.evt.detail).toEqual({ id: 1 });
 		expect(received[0]?.self).toBe(list);
 	});
 
-	test("separates same local name emitted by different classes", () => {
-		const items: unknown[] = [];
-		const notes: unknown[] = [];
+	test("two components publish on the same channel", () => {
+		const received: unknown[] = [];
 
-		class TaskItem extends TemplesComponent {
-			onChanged(evt: CustomEvent): void {
-				items.push(evt.detail);
-			}
-		}
+		class TaskItem extends TemplesComponent {}
 
-		class TaskNote extends TemplesComponent {
+		class TaskNote extends TemplesComponent {}
+
+		class TaskList extends TemplesComponent {
 			onChanged(evt: CustomEvent): void {
-				notes.push(evt.detail);
+				received.push(evt.detail);
 			}
 		}
 
@@ -792,21 +822,23 @@ describe("TemplesComponent messaging", () => {
 		TemplesComponent.define("msg-note-b", TaskNote, {
 			template: "<p></p>"
 		});
+		TemplesComponent.define("msg-list-b", TaskList, {
+			template: "<ul></ul>"
+		});
 
 		const item = document.createElement("msg-item-b") as TaskItem;
 		const note = document.createElement("msg-note-b") as TaskNote;
+		const list = document.createElement("msg-list-b") as TaskList;
 
-		item.on({ "msg-item-b:changed": "onChanged" });
-		note.on({ "msg-note-b:changed": "onChanged" });
+		list.on({ "task:changed": "onChanged" });
 
-		item.emit("changed", "item-a");
-		note.emit("changed", "note-b");
+		item.emit("task:changed", "item-a");
+		note.emit("task:changed", "note-b");
 
-		expect(items).toEqual(["item-a"]);
-		expect(notes).toEqual(["note-b"]);
+		expect(received).toEqual(["item-a", "note-b"]);
 	});
 
-	test("does not deliver to a listener on the unprefixed name", () => {
+	test("does not deliver a message to a different channel", () => {
 		let hits = 0;
 
 		class TaskItem extends TemplesComponent {
@@ -821,10 +853,106 @@ describe("TemplesComponent messaging", () => {
 
 		const item = document.createElement("msg-item-c") as TaskItem;
 
-		item.on({ completed: "onPing" });
-		item.emit("completed");
+		item.on({ "task:ping": "onPing" });
+		item.emit("task:pong");
 
 		expect(hits).toBe(0);
+	});
+
+	test("delivers a message to the nearest ancestor first, then the decoupled subscribers", () => {
+		const hits: string[] = [];
+
+		class Child extends TemplesComponent {
+			onPing(): void {
+				hits.push("child");
+			}
+		}
+
+		class Owner extends TemplesComponent {
+			onPing(): void {
+				hits.push("owner");
+			}
+		}
+
+		class Outsider extends TemplesComponent {
+			onPing(): void {
+				hits.push("outsider");
+			}
+		}
+
+		TemplesComponent.define("msg-child", Child, {
+			template: "<i></i>",
+			events: { "task:ping": "onPing" }
+		});
+		TemplesComponent.define("msg-owner", Owner, {
+			template: "<msg-child></msg-child>",
+			events: { "task:ping": "onPing" }
+		});
+		TemplesComponent.define("msg-outsider", Outsider, {
+			template: "<span></span>",
+			events: { "task:ping": "onPing" }
+		});
+
+		const owner = document.createElement("msg-owner") as Owner;
+		const outsider = document.createElement("msg-outsider") as Outsider;
+
+		document.body.appendChild(owner);
+		document.body.appendChild(outsider);
+
+		const child = owner.querySelector("msg-child") as Child;
+
+		child.emit("task:ping");
+
+		expect(hits).toEqual(["child", "owner", "outsider"]);
+
+		owner.remove();
+		outsider.remove();
+	});
+
+	test("stopPropagation keeps a message inside the handling ancestor", () => {
+		const hits: string[] = [];
+
+		class Child extends TemplesComponent {}
+
+		class Owner extends TemplesComponent {
+			onPing(evt: Event): void {
+				hits.push("owner");
+				evt.stopPropagation();
+			}
+		}
+
+		class Outsider extends TemplesComponent {
+			onPing(): void {
+				hits.push("outsider");
+			}
+		}
+
+		TemplesComponent.define("msg-stop-child", Child, {
+			template: "<i></i>"
+		});
+		TemplesComponent.define("msg-stop-owner", Owner, {
+			template: "<msg-stop-child></msg-stop-child>",
+			events: { "task:ping": "onPing" }
+		});
+		TemplesComponent.define("msg-stop-outsider", Outsider, {
+			template: "<span></span>",
+			events: { "task:ping": "onPing" }
+		});
+
+		const owner = document.createElement("msg-stop-owner") as Owner;
+		const outsider = document.createElement("msg-stop-outsider") as Outsider;
+
+		document.body.appendChild(owner);
+		document.body.appendChild(outsider);
+
+		const child = owner.querySelector("msg-stop-child") as Child;
+
+		child.emit("task:ping");
+
+		expect(hits).toEqual(["owner"]);
+
+		owner.remove();
+		outsider.remove();
 	});
 
 	test("disconnecting stops message delivery", () => {
@@ -843,18 +971,18 @@ describe("TemplesComponent messaging", () => {
 		});
 		TemplesComponent.define("msg-listener", Listener, {
 			template: "<span></span>",
-			events: { "msg-emitter:ping": "onPing" }
+			events: { "task:ping": "onPing" }
 		});
 
 		const emitter = document.createElement("msg-emitter") as Emitter;
 		const listener = document.createElement("msg-listener") as Listener;
 
 		document.body.appendChild(listener);
-		emitter.emit("ping");
+		emitter.emit("task:ping");
 		expect(hits).toBe(1);
 
 		listener.remove();
-		emitter.emit("ping");
+		emitter.emit("task:ping");
 		expect(hits).toBe(1);
 	});
 
@@ -879,8 +1007,8 @@ describe("TemplesComponent messaging", () => {
 		const item = document.createElement("msg-item-d") as TaskItem;
 		const list = document.createElement("msg-list-d") as TaskList;
 
-		list.on({ "msg-item-d:completed": "onCompleted" });
-		item.emit("completed");
+		list.on({ "task:completed": "onCompleted" });
+		item.emit("task:completed");
 
 		expect(hits).toBe(1);
 	});

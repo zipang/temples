@@ -26,7 +26,7 @@ The packages ship plain ES modules. The minified builds have the following sizes
 | Package | Minified | Gzip |
 |---------|----------|------|
 | `@temples/engine` | 6.3 kB | 2.6 kB |
-| `@temples/components` | 5.3 kB | 2.2 kB |
+| `@temples/components` | 6.3 kB | 2.5 kB |
 | `@temples/ssr` | 1.7 kB | 926 B |
 | `@temples/jquery` | 430 B | 298 B |
 
@@ -67,3 +67,12 @@ roadmap/        spec, plan, and task list
 ## License
 
 MIT
+
+## Glossary
+
+- **DOM event**: A native browser event, such as a click or a submit. A component binds it with
+  `"<eventType> <selector>"`. It carries a UI interaction, and it bubbles up the component tree.
+- **Message**: A value that `emit()` publishes on the message bus. It carries a domain meaning,
+  such as `shopping-item:removed`. The author chooses the channel name.
+- **Message bus**: The shared channel that routes messages between components that do not know
+  each other. A message bubbles to the ancestor components first, then reaches the bus.

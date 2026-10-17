@@ -209,8 +209,8 @@ component instance and receive the event, so they can call `preventDefault()`, r
 `event.target.value`, and call other component methods directly.
 
 A binding **with a space** is a DOM event: `"<eventType> <selector>"`. One shared document
-listener per event type serves every component; the selector is matched inside the component's
-subtree.
+listener per event type serves every component. The selector is matched inside the subtree of the
+component that owns the binding.
 
 ```javascript
 events: {
@@ -224,12 +224,16 @@ onAdd(event) {
 }
 ```
 
-A binding **without a space** is an inter-component message: `"<tag>:<name>"`. Messages travel on
-a shared bus, so any component can talk to any other, regardless of DOM position:
+A DOM event bubbles up the component tree, like a native DOM event. The closest component handles
+it first, then each outer component. A parent can therefore handle an event that starts inside a
+nested child component.
+
+A binding **without a space** is a message channel: `"<family>:<action>"`. The author chooses the
+name, so related messages share one channel and several components can publish on it:
 
 ```javascript
 // shopping-item.js
-this.emit("updated", { id: 1, label: "Milk" }); // delivered as "shopping-item:updated"
+this.emit("shopping-item:updated", { id: 1, label: "Milk" });
 
 // shopping-app.js
 events: {
@@ -242,9 +246,32 @@ onUpdated(event) {
 }
 ```
 
-The tag prefix keeps same-named messages from different component classes apart. The `events` map
-is registered on connection and unsubscribed on disconnection; `this.on(map)` adds runtime
-bindings the same way.
+A message bubbles too. The subscribers that are ancestors of the emitter receive it first, the
+nearest one first. The remaining subscribers on the bus receive it last. A handler calls
+`event.stopPropagation()` to stop the walk, so the outer ancestors and the bus receive nothing.
+
+The `events` map is registered on connection and unsubscribed on disconnection. `this.on(map)`
+adds runtime bindings the same way.
+
+### Good practice: separate the intent from the change
+
+A component that owns its data marks a local action and a shared change with two messages on one
+family channel.
+
+- The **intent** names the user action, for example `shopping-item:save` and
+  `shopping-item:remove`. A reusable child, such as an icon button, publishes the intent. The
+  owner is the nearest subscribed ancestor. It handles the intent and calls `stopPropagation()`,
+  so the intent never reaches the other instances.
+- The **change** names the result, for example `shopping-item:updated` and
+  `shopping-item:removed`. The owner publishes the change after it updates its state. The owner
+  does not stop a change that other components need.
+
+Name a message handler `on<EventName>`, with the channel in PascalCase. For example,
+`onShoppingItemUpdated` handles `shopping-item:updated`. The name tells a message handler apart
+from a DOM handler at a glance.
+
+A channel groups a domain family, not a component class. Two components can publish on one
+channel.
 
 ## Styling
 

@@ -97,7 +97,7 @@ A class that declares its own `observedAttributes` or `attributeTypes` statics, 
 | Member | Description |
 |--------|-------------|
 | `state` | The reactive state object, typed by the `TemplesComponent<T>` parameter and initialized through `super({ ... })` in the subclass constructor: attributes coerced by the `attributes` types, plus any internal values. Any mutation re-renders. |
-| `emit(name, detail?)` | Emits an inter-component message, delivered as `"<tag>:<name>"` on the shared bus. |
+| `emit(channel, detail?)` | Publishes a message on `channel`. The author chooses the name, for example `"shopping-item:updated"`. The message bubbles to the nearest subscribed ancestor, then the outer ancestors, then the decoupled subscribers. |
 | `on(events)` | Merges additional bindings at runtime, same map format as the `events` option. |
 
 **Types**
