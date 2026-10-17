@@ -392,3 +392,8 @@ Nested slots — a slot inside a projected child — are not distributed.
 
 `@temples/ssr` can render component tags to their markup for static output. See
 [SSR and static site generation](ssr.html).
+
+## Recipes and good practices
+
+- [How to send messages](recipes/messages.html) — send an intent up to the owner and a change
+  out to the app.
