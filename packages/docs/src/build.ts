@@ -1,13 +1,24 @@
 import { mkdir } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { prepare } from "@temples/ssr";
 import { markdownToHtml } from "./markdown";
 
 /** Root directory of the docs workspace. */
 const DOCS_DIR = resolve(import.meta.dir, "..");
 
-/** Public URL of the deployed site, used for the absolute links in llms.txt. */
-const BASE_URL = "https://zipang.github.io/temples";
+/**
+ * Canonical public URL of the deployed site, used for the absolute links.
+ *
+ * Set `BASE_URL` at build time, for example
+ * `BASE_URL=https://zipang.github.io/temples bun run build:docs`. A build
+ * without the variable falls back to the canonical production URL. Set it to
+ * the local origin (`BASE_URL=http://localhost:4173`) to keep the absolute
+ * links local. A trailing slash is ignored.
+ */
+export const BASE_URL = (process.env.BASE_URL ?? "https://zipang.github.io/temples").replace(
+	/\/+$/,
+	""
+);
 
 /** The directory holding the markdown sources. */
 const CONTENT_DIR = resolve(DOCS_DIR, "content");
@@ -22,7 +33,21 @@ interface PageSource {
 	description: string;
 	order: number;
 	hidden: boolean;
+
+	/** The full file, front-matter included, for the markdown export. */
+	raw: string;
+
+	/** The body, without the front-matter block, rendered into the HTML page. */
 	markdown: string;
+}
+
+/** Options for `buildSite`. */
+export interface BuildOptions {
+	/** Canonical origin baked into every absolute link. Defaults to `BASE_URL`. */
+	baseUrl?: string;
+
+	/** Directory receiving the built site. Defaults to `www/`. */
+	outDir?: string;
 }
 
 /** Metadata of one built page, as consumed by the layout and llms.txt. */
@@ -69,12 +94,16 @@ const parseFrontMatter = (
 };
 
 /**
- * Load every markdown page from `content/`, ordered by the `order` field.
+ * Load every markdown page from `content/`, nested directories included.
+ *
+ * A page in a subdirectory (such as `recipes/messages.md`) is a **referenced
+ * page**: the build renders it and exports its markdown, and `llms.txt` lists
+ * it, but it stays out of the page navigation. Its slug keeps the directory.
  *
  * @returns The page sources, sorted for the navigation.
  */
 const loadPages = async (): Promise<PageSource[]> => {
-	const glob = new Bun.Glob("*.md");
+	const glob = new Bun.Glob("**/*.md");
 	const slugs: string[] = [];
 
 	for await (const file of glob.scan({ cwd: CONTENT_DIR })) {
@@ -96,6 +125,7 @@ const loadPages = async (): Promise<PageSource[]> => {
 				description: fields.description ?? "",
 				order: Number(fields.order ?? 100),
 				hidden: fields.hidden === "true",
+				raw,
 				markdown: body
 			};
 		})
@@ -105,14 +135,42 @@ const loadPages = async (): Promise<PageSource[]> => {
 };
 
 /**
+ * Rewrite the relative page links of a markdown source to absolute URLs.
+ *
+ * An author writes a short relative link (`binding-syntax.html`). The build
+ * makes it absolute, so a reader copies or fetches it without resolving a path.
+ * The HTML page keeps the `.html` target. The markdown export points at the
+ * `.md` twin, because agents read the markdown export.
+ *
+ * @param markdown - The markdown source.
+ * @param extension - The target extension: `"html"` or `"md"`.
+ * @param baseUrl - The canonical origin prefixed to every link.
+ * @returns The markdown with every relative page link made absolute.
+ */
+const absoluteLinks = (markdown: string, extension: "html" | "md", baseUrl: string): string =>
+	markdown.replace(/\]\(([^)\s]+)\)/g, (match, target: string) => {
+		const hashAt = target.indexOf("#");
+		const path = hashAt === -1 ? target : target.slice(0, hashAt);
+		const hash = hashAt === -1 ? "" : target.slice(hashAt);
+
+		if (!path.endsWith(".html")) return match;
+		if (/^[a-z][a-z0-9+.-]*:/i.test(path)) return match;
+
+		return `](${baseUrl}/${path.slice(0, -".html".length)}.${extension}${hash})`;
+	});
+
+/**
  * Build the llms.txt index consumed by AI coding agents.
  *
  * Each page links to its raw markdown export: agents read markdown, not HTML.
+ * The index is the agent entry point, so it lists every page, the referenced
+ * recipes included.
  *
  * @param pages - The metadata of every built page.
+ * @param baseUrl - The canonical origin prefixed to every link.
  * @returns The llms.txt content.
  */
-const buildLlmsTxt = (pages: PageMeta[]): string => {
+const buildLlmsTxt = (pages: PageMeta[], baseUrl: string): string => {
 	const lines = [
 		"# temples documentation",
 		"",
@@ -124,7 +182,7 @@ const buildLlmsTxt = (pages: PageMeta[]): string => {
 
 	for (const page of pages) {
 		const description = page.description === "" ? page.title : page.description;
-		lines.push(`- [${page.title}](${BASE_URL}/${page.markdownUrl}): ${description}`);
+		lines.push(`- [${page.title}](${baseUrl}/${page.markdownUrl}): ${description}`);
 	}
 
 	lines.push("", `Sources: https://github.com/zipang/temples`, "");
@@ -137,43 +195,54 @@ const buildLlmsTxt = (pages: PageMeta[]): string => {
  *
  * Every markdown page is converted to HTML, rendered through the temples
  * layout with `@temples/ssr`, and written as `<slug>.html`. Its raw markdown
- * source is copied next to it as `<slug>.md`, for agents reading plain text.
- * The stylesheet and an `llms.txt` agent index are emitted alongside; the
- * index references the markdown exports. Pages with `hidden: true` are built
- * but excluded from the navigation, the markdown exports, and `llms.txt`.
+ * source is rewritten with `.md` links and written next to it as `<slug>.md`,
+ * for agents reading plain text. The stylesheet and an `llms.txt` agent index
+ * are emitted alongside; the index references the markdown exports. Pages with
+ * `hidden: true` are built but excluded from the navigation, the markdown
+ * exports, and `llms.txt`. A page in a subdirectory is built and exported, and
+ * it appears in `llms.txt`, but it stays out of the navigation.
  *
+ * @param options - The build options: `baseUrl` and `outDir`.
  * @returns The metadata of every built page.
  */
-export const buildSite = async (): Promise<PageMeta[]> => {
+export const buildSite = async (options: BuildOptions = {}): Promise<PageMeta[]> => {
+	const baseUrl = options.baseUrl ?? BASE_URL;
+	const outDir = options.outDir ?? WWW_DIR;
 	const sources = await loadPages();
-	const metas: PageMeta[] = sources
-		.filter((source) => !source.hidden)
-		.map((page) => ({
-			slug: page.slug,
-			title: page.title,
-			description: page.description,
-			url: `${page.slug}.html`,
-			markdownUrl: `${page.slug}.md`
-		}));
+	const visible = sources.filter((source) => !source.hidden);
+	const metas: PageMeta[] = visible.map((source) => ({
+		slug: source.slug,
+		title: source.title,
+		description: source.description,
+		url: `${source.slug}.html`,
+		markdownUrl: `${source.slug}.md`
+	}));
+	// Only top-level pages enter the navigation. A page in a subdirectory is
+	// referenced from another page and from llms.txt instead.
+	const navMetas = metas.filter((meta) => !meta.slug.includes("/"));
 
 	const layout = await Bun.file(resolve(DOCS_DIR, "layout.html")).text();
 	const renderLayout = prepare(layout, { removeDataBindings: false });
 
-	await mkdir(WWW_DIR, { recursive: true });
+	await mkdir(outDir, { recursive: true });
 
 	await Bun.write(
-		resolve(WWW_DIR, "assets", "style.css"),
+		resolve(outDir, "assets", "style.css"),
 		Bun.file(resolve(DOCS_DIR, "assets", "style.css"))
 	);
 
 	for (const source of sources) {
+		// One `../` per directory level, so the shared asset, home, index, and
+		// navigation links stay correct for a page in a subdirectory.
+		const base = "../".repeat(source.slug.split("/").length - 1);
+
 		/**
-		 * The nav data of this page: every visible page, plus a helper that
+		 * The nav data of this page: every navigation page, with a helper that
 		 * derives the `current` state class from the rendered page slug.
 		 */
-		const nav = metas.map((meta) => ({
+		const nav = navMetas.map((meta) => ({
 			title: meta.title,
-			url: meta.url,
+			url: `${base}${meta.url}`,
 			/**
 			 * The state class of the item: `current` when it matches the page.
 			 */
@@ -181,33 +250,41 @@ export const buildSite = async (): Promise<PageMeta[]> => {
 		}));
 
 		const html = await renderLayout({
-			site: { pages: nav },
+			site: {
+				pages: nav,
+				homeUrl: `${base}index.html`,
+				styleUrl: `${base}assets/style.css`,
+				llmsUrl: `${base}llms.txt`
+			},
 			page: {
 				title: source.title,
 				description: source.description,
-				content: markdownToHtml(source.markdown),
-				markdownUrl: source.hidden ? "" : `${source.slug}.md`
+				content: markdownToHtml(absoluteLinks(source.markdown, "html", baseUrl)),
+				markdownUrl: source.hidden ? "" : `${baseUrl}/${source.slug}.md`
 			}
 		});
 
-		await Bun.write(resolve(WWW_DIR, `${source.slug}.html`), html);
+		const htmlPath = resolve(outDir, `${source.slug}.html`);
+
+		await mkdir(dirname(htmlPath), { recursive: true });
+		await Bun.write(htmlPath, html);
 
 		if (!source.hidden) {
-			await Bun.write(
-				resolve(WWW_DIR, `${source.slug}.md`),
-				Bun.file(resolve(CONTENT_DIR, `${source.slug}.md`))
-			);
+			const mdPath = resolve(outDir, `${source.slug}.md`);
+
+			await mkdir(dirname(mdPath), { recursive: true });
+			await Bun.write(mdPath, absoluteLinks(source.raw, "md", baseUrl));
 		}
 	}
 
-	await Bun.write(resolve(WWW_DIR, "llms.txt"), buildLlmsTxt(metas));
+	await Bun.write(resolve(outDir, "llms.txt"), buildLlmsTxt(metas, baseUrl));
 
 	return metas;
 };
 
 if (import.meta.main) {
 	const pages = await buildSite();
-	console.log(`Built ${pages.length} pages into packages/docs/www:`);
+	console.log(`Built ${pages.length} pages into packages/docs/www (BASE_URL: ${BASE_URL}):`);
 
 	for (const page of pages) {
 		console.log(`  ${page.url}`);

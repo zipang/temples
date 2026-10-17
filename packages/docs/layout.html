@@ -6,13 +6,13 @@
 	<title data-bind="page.title">temples documentation</title>
 	<meta name="description" data-bind="content=page.description" content="Declarative HTML templates." />
 	<link rel="alternate" type="text/markdown" data-render-if="page.markdownUrl" href="index.md" data-bind="href=page.markdownUrl" />
-	<link rel="describedby" href="llms.txt" />
-	<link rel="stylesheet" href="assets/style.css" />
+	<link rel="describedby" href="llms.txt" data-bind="href=site.llmsUrl" />
+	<link rel="stylesheet" href="assets/style.css" data-bind="href=site.styleUrl" />
 	<link rel="icon" href="data:," />
 </head>
 <body>
 	<header class="site-header">
-		<a class="brand" href="index.html">@temples</a>
+		<a class="brand" href="index.html" data-bind="href=site.homeUrl">@temples</a>
 		<span class="tagline">templ(<em>at</em>)es that you won't @</span>
 	</header>
 	<nav class="sidebar" aria-label="Pages">

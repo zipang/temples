@@ -1,12 +1,24 @@
 import { join } from "node:path";
+import { buildSite } from "./build";
 
-/** Static file server for the built documentation site inside www/. */
+/** Local preview server for the built documentation site inside www/. */
 
 /** Directory holding the built site. */
 const wwwDir = join(import.meta.dir, "../www");
 
-const server = Bun.serve({
-	port: Number(process.env.PORT ?? 4173),
+/** The port the preview server listens on. */
+const port = Number(process.env.PORT ?? 4173);
+
+/** The local origin, used as the base URL so every absolute link points here. */
+const origin = `http://localhost:${port}`;
+
+// Rebuild before serving, with the local origin as the base URL. Every absolute
+// link (page content, markdown exports, llms.txt) then points back at this
+// server, so the preview never navigates to the deployed site.
+await buildSite({ baseUrl: origin });
+
+Bun.serve({
+	port,
 	routes: {
 		"/": new Response(Bun.file(`${wwwDir}/index.html`))
 	},
@@ -31,4 +43,4 @@ const server = Bun.serve({
 	}
 });
 
-console.log(`Documentation served at http://localhost:${server.port}/`);
+console.log(`Documentation served at ${origin}/`);

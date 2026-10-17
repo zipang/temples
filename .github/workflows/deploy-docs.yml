@@ -27,6 +27,8 @@ jobs:
           bun-version: latest
       - run: bun install
       - run: bun run build:docs
+        env:
+          BASE_URL: https://zipang.github.io/temples
       - uses: actions/upload-pages-artifact@v3
         with:
           path: packages/docs/www
